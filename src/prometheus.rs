@@ -37,7 +37,7 @@ use std::env;
 use std::result::Result;
 use warp::{Filter, Rejection, Reply};
 use prometheus::{
-    IntGauge, IntGaugeVec, Opts, Registry,
+    GaugeVec, IntGauge, IntGaugeVec, Opts, Registry,
 };
 
 mod jbod;
@@ -61,7 +61,19 @@ lazy_static! {
         IntGaugeVec::new(
         Opts::new("jbod_slot_temperature", "Enclosure number, slot position and temperature"),
         &["slot", "enclosure"]
-    ).expect("metric can be created");
+        ).expect("metric can be created");
+
+    pub static ref JBOD_ENCLOSURE_TEMPERATURE: IntGaugeVec =
+        IntGaugeVec::new(
+        Opts::new("jbod_enclosure_temperature", "Enclosure number, slot position, description and temperature"),
+        &["enclosure", "slot", "description"]
+        ).expect("metric can be created");
+
+    pub static ref JBOD_ENCLOSURE_VOLTAGE: GaugeVec =
+        GaugeVec::new(
+        Opts::new("jbod_enclosure_voltage", "Enclosure number, slot position, description and voltage"),
+        &["enclosure", "slot", "description"]
+        ).expect("metric can be created");
 
     pub static ref JBOD_FAN_RPM: IntGaugeVec =
         IntGaugeVec::new(
@@ -75,6 +87,10 @@ fn register_metrics() {
     REGISTRY.register(Box::new(NUMBER_OF_ENCLOSURES.clone()))
         .expect("collector can be registered");
     REGISTRY.register(Box::new(JBOD_SLOT_TEMPERATURE.clone()))
+        .expect("collector can be registered");
+    REGISTRY.register(Box::new(JBOD_ENCLOSURE_TEMPERATURE.clone()))
+        .expect("collector can be registered");
+    REGISTRY.register(Box::new(JBOD_ENCLOSURE_VOLTAGE.clone()))
         .expect("collector can be registered");
     REGISTRY.register(Box::new(JBOD_FAN_RPM.clone()))
         .expect("collector can be registered");
@@ -107,6 +123,24 @@ async fn metrics_handler() -> Result<impl Reply, Rejection> {
             .set(fan.speed);
     }
     drop(enclosure_fan);
+
+    // Enclosure Temperature sensors
+    let mut enclosure_temp = BackPlane::get_enclosure_temp();
+    enclosure_temp.sort_by_key(|f| f.index.clone());
+    for temp in enclosure_temp.iter() {
+        JBOD_ENCLOSURE_TEMPERATURE.with_label_values(&[&temp.slot, &temp.index, &temp.description])
+            .set(temp.temperature);
+    }
+    drop(enclosure_temp);
+
+    // Enclosure Voltage sensors
+    let mut enclosure_voltage = BackPlane::get_enclosure_voltage();
+    enclosure_voltage.sort_by_key(|f| f.index.clone());
+    for voltage in enclosure_voltage.iter() {
+        JBOD_ENCLOSURE_VOLTAGE.with_label_values(&[&voltage.slot, &voltage.index, &voltage.description])
+            .set(voltage.voltage);
+    }
+    drop(enclosure_voltage);
 
     // Enclosures
     let enclosures = number_of_enclosure_metrics();

@@ -31,14 +31,16 @@
 #[forbid(unsafe_code)]
 use clap::{App, Arg, ArgMatches, SubCommand};
 use colored::*;
+use jbod::enclosure::BackPlane::create_enclosure_table;
 use nix::{
     sys::wait::waitpid,
     unistd::{fork, ForkResult},
 };
 use std::process::{exit, Command};
 
-extern crate prettytable;
-use prettytable::{Cell, Row};
+#[macro_use] extern crate prettytable;
+use prettytable::format;
+use prettytable::{Table, Cell, Row};
 
 mod jbod;
 mod utils;
@@ -92,6 +94,8 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
     let disks_option = option.is_present("disks");
     let enclosure_option = option.is_present("enclosure");
     let fan_option = option.is_present("fan");
+    let temperature_option = option.is_present("temperature");
+    let voltage_option = option.is_present("voltage");
 
     // If the options `-ed` or `-d` are used, it shows
     // the enclosure and disks altogether.
@@ -99,40 +103,62 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
         let enclosure = BackPlane::get_enclosure();
         let mut disks = DiskShelf::jbod_disk_map();
         disks.sort_by_key(|d| d.slot.clone());
+
+
         for enc in enclosure {
-            print!("{}", enc);
-            println!("     '");
+            print!("{}", enc);     
+
+            let mut table = Table::new();
+            table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+            table.set_titles(row!["Disk", "Map", "Slot", "Vendor", "Model", "Serial", "Temp", "Fw"]);
             for disk in &disks {
                 if enc.slot == disk.enclosure {
-                    print!("     `+-");
-                    print!(" Disk: {:<10}", disk.device_path.green(),);
+                    let mut row: Vec<Cell> = Vec::new();
+                    row.push(Cell::new(&disk.device_path).style_spec("Fg"));
+                    // row.push(Cell::new(&disk.device_path).style_spec("Fg"));
                     if disk.device_map == "NONE" {
-                        print!(" Map: {:<10}", disk.device_map.yellow());
+                        row.push(Cell::new(&disk.device_map).style_spec("Fy"));
                     } else {
-                        print!(" Map: {:<10}", disk.device_map.green());
+                        row.push(Cell::new(&disk.device_map).style_spec("Fg"));
                     }
-                    print!(" Slot: {:<10}", disk.slot.green());
-                    print!(" Vendor: {:<10}", disk.vendor.blue());
-                    print!(" Model: {:<10}", disk.model.blue());
-                    print!(" Serial: {:<10} ", disk.serial.blue());
+                    row.push(Cell::new(&disk.slot.as_str()).style_spec("Fg"));
+                    row.push(Cell::new(&disk.vendor).style_spec("Fb"));
+                    row.push(Cell::new(&disk.model).style_spec("Fb"));
+                    row.push(Cell::new(&disk.serial).style_spec("Fg"));
                     match color_temp(&disk.temperature) {
-                        Some((temp_colored, unit_colored)) => print!("Temp: {}{:<2}", temp_colored, unit_colored),
-                        None => print!("Temp: {:<4}", "ERR".red().bold().blink()),
+                        Some((temp_colored, unit_colored)) => row.push(Cell::new(format!("{}{:<2}", temp_colored, unit_colored).as_str())),
+                        None => row.push(Cell::new("ERR").style_spec("bFR")),
                     }
-                    println!(" Fw: {}", disk.fw_revision.blue());
+                    
+                    row.push(Cell::new(&disk.fw_revision).style_spec("Fb"));
+                    table.add_row(Row::new(row));
                 }
             }
+            table.printstd();
         }
     // Here it shows only the enclosures.
     } else if enclosure_option && !disks_option {
         let enclosure = BackPlane::get_enclosure();
+
+        // Prepare table
+        let mut enc_table = create_enclosure_table();
         for enc in enclosure {
-            print!("{}", enc);
+            let mut enc_row: Vec<Cell> = Vec::new();
+            enc_row.push(Cell::new(&enc.slot));
+            enc_row.push(Cell::new(&enc.device_path));
+            enc_row.push(Cell::new(&enc.vendor));
+            enc_row.push(Cell::new(&enc.model));
+            enc_row.push(Cell::new(&enc.revision));
+            enc_row.push(Cell::new(&enc.serial));
+            enc_table.add_row(Row::new(enc_row));
         }
+        enc_table.printstd();
+
     // Here it shows the FAN.
     } else if fan_option {
         let enclosure_fan = BackPlane::get_enclosure_fan();
         let mut fan_table = BackPlane::create_fan_table();
+        fan_table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
         for fan in enclosure_fan {
             fan_table.add_row(Row::new(vec![
                 Cell::new(&fan.slot),
@@ -143,6 +169,34 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
             ]));
         }
         fan_table.printstd();
+    } else if temperature_option {
+        let enclosure_temp = BackPlane::get_enclosure_temp();
+        let mut temp_table = BackPlane::create_temp_table();
+        temp_table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+        for temp in enclosure_temp {
+            temp_table.add_row(Row::new(vec![
+                Cell::new(&temp.slot),
+                Cell::new(&temp.index),
+                Cell::new(&temp.description),
+                Cell::new(&temp.status),
+                Cell::new(&temp.temperature.to_string()),
+            ]));
+        }
+        temp_table.printstd();
+    } else if voltage_option {
+        let enclosure_voltage = BackPlane::get_enclosure_voltage();
+        let mut voltage_table = BackPlane::create_voltage_table();
+        voltage_table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+        for voltage in enclosure_voltage {
+            voltage_table.add_row(Row::new(vec![
+                Cell::new(&voltage.slot),
+                Cell::new(&voltage.index),
+                Cell::new(&voltage.description),
+                Cell::new(&voltage.status),
+                Cell::new(&voltage.voltage.to_string()),
+            ]));
+        }
+        voltage_table.printstd();
     }
 
     Ok(())
@@ -229,7 +283,27 @@ fn main() {
                         .takes_value(false)
                         .exclusive(false)
                         .help("List fan"),
-                ),
+                )
+                .arg(
+                    Arg::with_name("voltage")
+                        .short('v')
+                        .long("voltage")
+                        .multiple(false)
+                        .required(false)
+                        .takes_value(false)
+                        .exclusive(false)
+                        .help("List voltage sensors"),
+                )
+                .arg(
+                    Arg::with_name("temperature")
+                        .short('t')
+                        .long("temperature")
+                        .multiple(false)
+                        .required(false)
+                        .takes_value(false)
+                        .exclusive(false)
+                        .help("List temperature sensors"),
+                 ),
         )
         .subcommand(
             SubCommand::with_name("led")

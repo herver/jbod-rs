@@ -68,11 +68,44 @@ pub mod BackPlane {
         pub comment: String,
     }
 
+    #[derive(Debug)]
+    pub struct EnclosureTemperatureSensor {
+        /// The slot number provided by the JBOD
+        pub slot: String,
+        /// The device serial number
+        pub serial: String,
+         /// The name of the component provided by the JBOD.
+        pub description: String,
+        /// The slot position used by `sg_ses`.
+        pub index: String,
+        /// The temperature reported by the sensor
+        pub temperature: i64,
+        /// The status string of the sensor
+        pub status: String,
+    }
+
+    #[derive(Debug)]
+    pub struct EnclosureVoltageSensor {
+        /// The slot number provided by the JBOD
+        pub slot: String,
+        /// The device serial number
+        pub serial: String,
+         /// The name of the component provided by the JBOD.
+        pub description: String,
+        /// The slot position used by `sg_ses`.
+        pub index: String,
+        /// The voltage reported by the sensor
+        pub voltage: f64,
+        /// The status string of the sensor
+        pub status: String,
+    }
+
     /// Creates the pretty table for the enclosure.
-    fn create_enclosure_table() -> Table {
+    pub fn create_enclosure_table() -> Table {
         let mut enclosure_table = Table::new();
         enclosure_table.set_format(*format::consts::FORMAT_NO_BORDER);
-        enclosure_table.add_row(Row::new(vec![
+        enclosure_table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+        enclosure_table.set_titles(Row::new(vec![
             Cell::new("SLOT")
                 .with_style(Attr::Bold)
                 .with_style(Attr::ForegroundColor(color::BLUE)),
@@ -100,7 +133,7 @@ pub mod BackPlane {
     pub fn create_fan_table() -> Table {
         let mut enclosure_table = Table::new();
         enclosure_table.set_format(*format::consts::FORMAT_NO_BORDER);
-        enclosure_table.add_row(Row::new(vec![
+        enclosure_table.set_titles(Row::new(vec![
             Cell::new("SLOT")
                 .with_style(Attr::Bold)
                 .with_style(Attr::ForegroundColor(color::BLUE)),
@@ -121,9 +154,59 @@ pub mod BackPlane {
         enclosure_table
     }
 
+    /// Creates the pretty table for the Temperatures.
+    pub fn create_temp_table() -> Table {
+        let mut enclosure_table = Table::new();
+        enclosure_table.set_format(*format::consts::FORMAT_NO_BORDER);
+        enclosure_table.set_titles(Row::new(vec![
+            Cell::new("SLOT")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("IDENT")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("DESCRIPTION")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("STATUS")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("TEMP (°C)")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+        ]));
+
+        enclosure_table
+    }
+
+    /// Creates the pretty table for the Temperatures.
+    pub fn create_voltage_table() -> Table {
+        let mut enclosure_table = Table::new();
+        enclosure_table.set_format(*format::consts::FORMAT_NO_BORDER);
+        enclosure_table.set_titles(Row::new(vec![
+            Cell::new("SLOT")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("IDENT")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("DESCRIPTION")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("STATUS")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("VOLTAGE (V)")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+        ]));
+
+        enclosure_table
+    }
+
     /// Implementation to print the enclosure table without deal with the table.
     impl fmt::Display for Enclosure {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
             let mut enclosure_table = create_enclosure_table();
             enclosure_table.add_row(Row::new(vec![
                 Cell::new(&self.slot),
@@ -254,7 +337,7 @@ pub mod BackPlane {
                     let m = re.captures(x.as_str()).unwrap();
                     if m.name("id").is_some() {
                         let _idx = m.name("id").unwrap().as_str();
-                        let _desc = m.name("desc").unwrap().as_str(); // Empty string if no match
+                        let _desc = m.name("desc").unwrap().as_str().trim(); // Empty string if no match
                         let is_present =
                             enclosure_fan.iter().any(|c| c.index == _idx && c.serial == enclosure.serial);
                         if is_present == false {
@@ -273,6 +356,173 @@ pub mod BackPlane {
                 });
         }
         enclosure_fan
+    }
+
+    /// Returns the temperature value(Celsius) and a status string provided by the JBOD
+    ///
+    /// # Arguments
+    ///
+    /// * `device_path` - The enclosure device
+    /// * `temp_index` - The temperature sensor slot on the JBOD
+    ///
+    fn get_enclosure_temp_value(device_path: &str, temp_index: &str) -> (i64, String) {
+        let mut temp: i64 = 0;
+        let mut status: String = String::new();
+
+        let index = format!("--index={}", &temp_index);
+        let sg_ses_cmd = Command::new(SG_SES)
+            .arg(index)
+            .arg(&device_path)
+            .output()
+            .expect("Failed to get temperature value");
+        let sg_ses_output = String::from_utf8_lossy(&sg_ses_cmd.stdout);
+        let output_spl: Vec<&str> = sg_ses_output.split("\n").collect();
+        for output in output_spl {
+            if output.contains("status:") {
+                let output_status:  Vec<&str> = output.split("status:").collect();
+                status = output_status[1].trim().to_string();
+            }
+            if output.contains("Temperature=") {
+                let output_temp: Vec<&str> = output.split("=").collect();
+                let _temp = output_temp[1]
+                    .trim()
+                    .chars()
+                    .skip_while(|c| !c.is_digit(10))
+                    .take_while(|c| c.is_digit(10))
+                    .fold(None, |acc, c| {
+                        c.to_digit(10).map(|b| acc.unwrap_or(0) * 10 + b)
+                    });
+                temp = _temp.unwrap().into();
+            }
+        }
+        return (temp, status);
+    }
+
+    /// Returns a vector with the EnclosureTemperatureSensor structure for each temperature sensor.
+    ///
+    /// This function parses the output of sg_ses and collects information from
+    /// each temperature sensor.
+    ///
+    pub fn get_enclosure_temp() -> Vec<EnclosureTemperatureSensor> {
+        let mut enclosure_temp: Vec<EnclosureTemperatureSensor> = Vec::new();
+
+        let enclosures = get_enclosure();
+        for enclosure in enclosures.iter() {
+            let cmd = format!("{} -j -ff {} | grep 'Temperature sensor'", SG_SES, enclosure.device_path);
+            let cmd_run = subprocess::Exec::shell(cmd.to_string())
+                .stream_stdout()
+                .unwrap();
+            let enc_temp = BufReader::new(cmd_run);
+
+            // Build regex
+            let re = Regex::new("(?P<desc>.*?)\\[(?P<id>-?\\d+,-?\\d+)\\].*Temperature").unwrap();
+
+            enc_temp.lines()
+                .filter_map(|l| l.ok())
+                .filter(|l| re.is_match(l.as_str()))
+                .for_each(|x| {
+                    let m = re.captures(x.as_str()).unwrap();
+                    if m.name("id").is_some() {
+                        let _idx = m.name("id").unwrap().as_str();
+                        let _desc = m.name("desc").unwrap().as_str().trim(); // Empty string if no match
+                        let is_present =
+                            enclosure_temp.iter().any(|c| c.index == _idx && c.serial == enclosure.serial);
+                        if is_present == false {
+                            let (temperature, status): (i64, String) =
+                                get_enclosure_temp_value(&enclosure.device_path, _idx);
+                            enclosure_temp.push(EnclosureTemperatureSensor {
+                                slot: enclosure.slot.clone(),
+                                serial: enclosure.serial.clone(),
+                                description: _desc.to_string(),
+                                index: _idx.to_string(),
+                                temperature: temperature,
+                                status: status,
+                            });
+                        }
+                    }
+                });
+        }
+        enclosure_temp
+    }
+
+    /// Returns the voltage value(Volts) and a status string provided by the JBOD
+    ///
+    /// # Arguments
+    ///
+    /// * `device_path` - The enclosure device
+    /// * `voltage_index` - The voltage sensor slot on the JBOD
+    ///
+    fn get_enclosure_voltage_value(device_path: &str, voltage_index: &str) -> (f64, String) {
+        let mut voltage: f64 = 0.0;
+        let mut status: String = String::new();
+
+        let index = format!("--index={}", &voltage_index);
+        let sg_ses_cmd = Command::new(SG_SES)
+            .arg(index)
+            .arg(&device_path)
+            .output()
+            .expect("Failed to get voltage value");
+        let sg_ses_output = String::from_utf8_lossy(&sg_ses_cmd.stdout);
+        let output_spl: Vec<&str> = sg_ses_output.split("\n").collect();
+        for output in output_spl {
+            if output.contains("status:") {
+                let output_status:  Vec<&str> = output.split("status:").collect();
+                status = output_status[1].trim().to_string();
+            }
+            if output.contains("Voltage:") {
+                let output_voltage: Vec<&str> = output.split_whitespace().collect();
+                let _voltage = output_voltage[1].trim().parse::<f64>();
+                voltage = _voltage.unwrap().into();
+            }
+        }
+        return (voltage, status);
+    }
+
+    /// Returns a vector with the EnclosureVoltageSensor structure for each temperature sensor.
+    ///
+    /// This function parses the output of sg_ses and collects information from
+    /// each temperature sensor.
+    ///
+    pub fn get_enclosure_voltage() -> Vec<EnclosureVoltageSensor> {
+        let mut enclosure_voltage: Vec<EnclosureVoltageSensor> = Vec::new();
+
+        let enclosures = get_enclosure();
+        for enclosure in enclosures.iter() {
+            let cmd = format!("{} -j -ff {} | grep 'Voltage sensor'", SG_SES, enclosure.device_path);
+            let cmd_run = subprocess::Exec::shell(cmd.to_string())
+                .stream_stdout()
+                .unwrap();
+            let enc_voltage = BufReader::new(cmd_run);
+
+            // Build regex
+            let re = Regex::new("(?P<desc>.*?)\\[(?P<id>-?\\d+,-?\\d+)\\].*Voltage").unwrap();
+
+            enc_voltage.lines()
+                .filter_map(|l| l.ok())
+                .filter(|l| re.is_match(l.as_str()))
+                .for_each(|x| {
+                    let m = re.captures(x.as_str()).unwrap();
+                    if m.name("id").is_some() {
+                        let _idx = m.name("id").unwrap().as_str();
+                        let _desc = m.name("desc").unwrap().as_str().trim(); // Empty string if no match
+                        let is_present =
+                            enclosure_voltage.iter().any(|c| c.index == _idx && c.serial == enclosure.serial);
+                        if is_present == false {
+                            let (voltage, status): (f64, String) =
+                                get_enclosure_voltage_value(&enclosure.device_path, _idx);
+                            enclosure_voltage.push(EnclosureVoltageSensor {
+                                slot: enclosure.slot.clone(),
+                                serial: enclosure.serial.clone(),
+                                description: _desc.to_string(),
+                                index: _idx.to_string(),
+                                voltage: voltage,
+                                status: status,
+                            });
+                        }
+                    }
+                });
+        }
+        enclosure_voltage
     }
 
     /// Returns a vector with the Enclosure structure for each enclosure.
