@@ -129,7 +129,7 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
                         Some((temp_colored, unit_colored)) => row.push(Cell::new(format!("{}{:<2}", temp_colored, unit_colored).as_str())),
                         None => row.push(Cell::new("ERR").style_spec("bFR")),
                     }
-                    
+
                     row.push(Cell::new(&disk.fw_revision).style_spec("Fb"));
                     table.add_row(Row::new(row));
                 }
@@ -174,13 +174,15 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
         let mut temp_table = BackPlane::create_temp_table();
         temp_table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
         for temp in enclosure_temp {
-            temp_table.add_row(Row::new(vec![
-                Cell::new(&temp.slot),
-                Cell::new(&temp.index),
-                Cell::new(&temp.description),
-                Cell::new(&temp.status),
-                Cell::new(&temp.temperature.to_string()),
-            ]));
+            if temp.status != "Not installed" {
+                temp_table.add_row(Row::new(vec![
+                    Cell::new(&temp.slot),
+                    Cell::new(&temp.index),
+                    Cell::new(&temp.description),
+                    Cell::new(&temp.status),
+                    Cell::new(&temp.temperature.to_string()),
+                ]));
+            }
         }
         temp_table.printstd();
     } else if voltage_option {
