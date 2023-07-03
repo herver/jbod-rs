@@ -31,7 +31,7 @@
 #[allow(non_snake_case)]
 pub mod BackPlane {
     use std::fmt;
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Read};
     use std::process::{Command};
     use regex::Regex;
 
@@ -321,7 +321,7 @@ pub mod BackPlane {
 
         let enclosures = get_enclosure();
         for enclosure in enclosures.iter() {
-            let cmd = format!("{} -j -ff {} | grep Cooling", SG_SES, enclosure.device_path);
+            let cmd = format!("{} -j -f {} | grep Cooling", SG_SES, enclosure.device_path);
             let cmd_run = subprocess::Exec::shell(cmd.to_string())
                 .stream_stdout()
                 .unwrap();
@@ -408,7 +408,7 @@ pub mod BackPlane {
 
         let enclosures = get_enclosure();
         for enclosure in enclosures.iter() {
-            let cmd = format!("{} -j -ff {} | grep 'Temperature sensor'", SG_SES, enclosure.device_path);
+            let cmd = format!("{} -j -f {} | grep 'Temperature sensor'", SG_SES, enclosure.device_path);
             let cmd_run = subprocess::Exec::shell(cmd.to_string())
                 .stream_stdout()
                 .unwrap();
@@ -488,14 +488,14 @@ pub mod BackPlane {
 
         let enclosures = get_enclosure();
         for enclosure in enclosures.iter() {
-            let cmd = format!("{} -j -ff {} | grep 'Voltage sensor'", SG_SES, enclosure.device_path);
+            let cmd = format!("{} -j -f {} | grep 'Voltage sensor'", SG_SES, enclosure.device_path);
             let cmd_run = subprocess::Exec::shell(cmd.to_string())
                 .stream_stdout()
                 .unwrap();
             let enc_voltage = BufReader::new(cmd_run);
 
             // Build regex
-            let re = Regex::new("(?P<desc>.*?)\\[(?P<id>-?\\d+,-?\\d+)\\].*Voltage").unwrap();
+            let re = Regex::new(r"(?P<desc>.*?)\[(?P<id>-?\d+,-?\d+)\].*Voltage.*").unwrap();
 
             enc_voltage.lines()
                 .filter_map(|l| l.ok())

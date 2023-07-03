@@ -188,13 +188,15 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
         let mut voltage_table = BackPlane::create_voltage_table();
         voltage_table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
         for voltage in enclosure_voltage {
-            voltage_table.add_row(Row::new(vec![
-                Cell::new(&voltage.slot),
-                Cell::new(&voltage.index),
-                Cell::new(&voltage.description),
-                Cell::new(&voltage.status),
-                Cell::new(&voltage.voltage.to_string()),
-            ]));
+            if voltage.status != "Not installed" {
+                voltage_table.add_row(Row::new(vec![
+                    Cell::new(&voltage.slot),
+                    Cell::new(&voltage.index),
+                    Cell::new(&voltage.description),
+                    Cell::new(&voltage.status),
+                    Cell::new(&voltage.voltage.to_string()),
+                ]));
+            }
         }
         voltage_table.printstd();
     }
