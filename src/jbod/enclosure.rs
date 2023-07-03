@@ -328,7 +328,7 @@ pub mod BackPlane {
             let enc_fan = BufReader::new(cmd_run);
 
             // Build regex
-            let re = Regex::new("(?P<desc>.*?)\\[(?P<id>-?\\d+,-?\\d+)\\].*Cooling").unwrap();
+            let re = Regex::new(r"(?P<desc>.*?)\[(?P<id>\d+,\d+)\].*Cooling").unwrap();
 
             enc_fan.lines()
                 .filter_map(|l| l.ok())
@@ -415,7 +415,7 @@ pub mod BackPlane {
             let enc_temp = BufReader::new(cmd_run);
 
             // Build regex
-            let re = Regex::new("(?P<desc>.*?)\\[(?P<id>-?\\d+,-?\\d+)\\].*Temperature").unwrap();
+            let re = Regex::new(r"(?P<desc>.*?)\[(?P<id>\d+,\d+)\].*Temperature").unwrap();
 
             enc_temp.lines()
                 .filter_map(|l| l.ok())
@@ -495,7 +495,7 @@ pub mod BackPlane {
             let enc_voltage = BufReader::new(cmd_run);
 
             // Build regex
-            let re = Regex::new(r"(?P<desc>.*?)\[(?P<id>-?\d+,-?\d+)\].*Voltage.*").unwrap();
+            let re = Regex::new(r"(?P<desc>.*?)\[(?P<id>\d+,\d+)\].*Voltage.*").unwrap();
 
             enc_voltage.lines()
                 .filter_map(|l| l.ok())
