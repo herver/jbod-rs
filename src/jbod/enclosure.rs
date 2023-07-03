@@ -52,6 +52,20 @@ pub mod BackPlane {
     }
 
     #[derive(Debug)]
+    pub struct EnclosurePsu {
+        /// The slot number provided by the JBOD
+        pub slot: String,
+        /// The device serial number
+        pub serial: String,
+        /// The name of the component provided by the JBOD.
+        pub description: String,
+        /// The slot position used by `sg_ses`.
+        pub index: String,
+        /// The status string of the sensor
+        pub status: String,
+    }
+
+    #[derive(Debug)]
     pub struct EnclosureFan {
         /// The slot number provided by the JBOD
         pub slot: String,
@@ -129,6 +143,28 @@ pub mod BackPlane {
         enclosure_table
     }
 
+    /// Creates the pretty table for the PSUs.
+    pub fn create_psus_table() -> Table {
+        let mut enclosure_table = Table::new();
+        enclosure_table.set_format(*format::consts::FORMAT_NO_BORDER);
+        enclosure_table.set_titles(Row::new(vec![
+            Cell::new("SLOT")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("IDENT")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("DESCRIPTION")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+            Cell::new("STATUS")
+                .with_style(Attr::Bold)
+                .with_style(Attr::ForegroundColor(color::BLUE)),
+        ]));
+
+        enclosure_table
+    }
+
     /// Creates the pretty table for the FAN.
     pub fn create_fan_table() -> Table {
         let mut enclosure_table = Table::new();
@@ -179,7 +215,7 @@ pub mod BackPlane {
         enclosure_table
     }
 
-    /// Creates the pretty table for the Temperatures.
+    /// Creates the pretty table for the Voltages.
     pub fn create_voltage_table() -> Table {
         let mut enclosure_table = Table::new();
         enclosure_table.set_format(*format::consts::FORMAT_NO_BORDER);
@@ -271,6 +307,79 @@ pub mod BackPlane {
         }
 
         return (vendor, ident, rev, serial);
+    }
+
+    /// Returns the status string for each PSU as provided by the JBOD
+    ///
+    /// # Arguments
+    ///
+    /// * `device_path` - The enclosure device
+    /// * `psu_index` - The PSU slot on the JBOD
+    ///
+    fn get_enclosure_psu_status(device_path: &str, psu_index: &str) -> String {
+        let mut status: String = String::new();
+
+        let index = format!("--index={}", &psu_index);
+        let sg_ses_cmd = Command::new(SG_SES)
+            .arg(index)
+            .arg(&device_path)
+            .output()
+            .expect("Failed to get PSU values");
+        let sg_ses_output = String::from_utf8_lossy(&sg_ses_cmd.stdout);
+        let output_spl: Vec<&str> = sg_ses_output.split("\n").collect();
+        for output in output_spl {
+            if output.contains("status:") {
+                let output_status:  Vec<&str> = output.split("status:").collect();
+                status = output_status[1].trim().to_string();
+            }
+        }
+        return status;
+    }
+
+    /// Returns a vector with the EnclosureTemperatureSensor structure for each temperature sensor.
+    ///
+    /// This function parses the output of sg_ses and collects information from
+    /// each temperature sensor.
+    ///
+    pub fn get_enclosure_psus() -> Vec<EnclosurePsu> {
+        let mut enclosure_psus: Vec<EnclosurePsu> = Vec::new();
+
+        let enclosures = get_enclosure();
+        for enclosure in enclosures.iter() {
+            let cmd = format!("{} -j -f {} | grep 'Power supply'", SG_SES, enclosure.device_path);
+            let cmd_run = subprocess::Exec::shell(cmd.to_string())
+                .stream_stdout()
+                .unwrap();
+            let enc_psus = BufReader::new(cmd_run);
+
+            // Build regex
+            let re = Regex::new(r"(?P<desc>.*?)\[(?P<id>\d+,\d+)\].*Power").unwrap();
+
+            enc_psus.lines()
+                .filter_map(|l| l.ok())
+                .filter(|l| re.is_match(l.as_str()))
+                .for_each(|x| {
+                    let m = re.captures(x.as_str()).unwrap();
+                    if m.name("id").is_some() {
+                        let _idx = m.name("id").unwrap().as_str();
+                        let _desc = m.name("desc").unwrap().as_str().trim(); // Empty string if no match
+                        let is_present =
+                            enclosure_psus.iter().any(|c| c.index == _idx && c.serial == enclosure.serial);
+                        if is_present == false {
+                            let status: String =
+                                get_enclosure_psu_status(&enclosure.device_path, _idx);
+                            enclosure_psus.push(EnclosurePsu {
+                                slot: enclosure.slot.clone(),
+                                serial: enclosure.serial.clone(),
+                                description: _desc.to_string(),
+                                index: _idx.to_string(),
+                                status: status,
+                            });
+                        }
+                    }
+                });
+        }
+        enclosure_psus
     }
 
     /// Returns the fan speed(RPM) and a message provided by the jbod with extra information

@@ -93,6 +93,7 @@ fn color_temp(temperature: &str) -> Option<(ColoredString, ColoredString)> {
 fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
     let disks_option = option.is_present("disks");
     let enclosure_option = option.is_present("enclosure");
+    let psu_option = option.is_present("psu");
     let fan_option = option.is_present("fan");
     let temperature_option = option.is_present("temperature");
     let voltage_option = option.is_present("voltage");
@@ -106,7 +107,7 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
 
 
         for enc in enclosure {
-            print!("{}", enc);     
+            print!("{}", enc);
 
             let mut table = Table::new();
             table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
@@ -154,6 +155,20 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
         }
         enc_table.printstd();
 
+    // Here it shows the PSUs
+    } else if psu_option {
+        let enclosure_psus = BackPlane::get_enclosure_psus();
+        let mut psus_table = BackPlane::create_psus_table();
+        psus_table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+        for psu in enclosure_psus {
+            psus_table.add_row(Row::new(vec![
+                Cell::new(&psu.slot),
+                Cell::new(&psu.index),
+                Cell::new(&psu.description),
+                Cell::new(&psu.status),
+            ]));
+        }
+        psus_table.printstd();
     // Here it shows the FAN.
     } else if fan_option {
         let enclosure_fan = BackPlane::get_enclosure_fan();
@@ -268,6 +283,15 @@ fn main() {
                         .required(false)
                         .takes_value(false)
                         .help("List enclosure"),
+                )
+                .arg(
+                    Arg::with_name("psu")
+                        .short('p')
+                        .long("psu")
+                        .multiple(false)
+                        .required(false)
+                        .takes_value(false)
+                        .help("List PSUs"),
                 )
                 .arg(
                     Arg::with_name("disks")
