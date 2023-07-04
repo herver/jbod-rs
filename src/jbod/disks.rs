@@ -110,7 +110,8 @@ pub mod DiskShelf {
             .expect("Failed to scsi_temperature the device");
         let scsi_temp_output = String::from_utf8_lossy(&scsi_temp_cmd.stdout);
         let output_spl: Vec<&str> = scsi_temp_output.split('\n').collect();
-        let temperature: String = output_spl[2].chars().filter(|n| n.is_digit(10)).collect();
+        let current_temp_lines: Vec<&str> = output_spl.into_iter().filter(|s| s.contains("Current temperature")).collect();
+        let temperature: String = current_temp_lines[0].chars().filter(|n| n.is_digit(10)).collect();
 
         temperature
     }
