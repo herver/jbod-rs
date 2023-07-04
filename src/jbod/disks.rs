@@ -45,8 +45,10 @@ pub mod DiskShelf {
     pub struct Disk {
         // Enclosure number identification, example: 15:0:1:0
         pub enclosure: String,
-        // Disk slopt identification
+        // Disk slot identification
         pub slot: String,
+        // Disk slot label
+        pub slot_label: String,
         // Disk path, example: /dev/sg105
         pub device_path: String,
         // Disk map, example: /dev/sdcz
@@ -65,6 +67,27 @@ pub mod DiskShelf {
         pub led_locate_path: String,
         // Path to led control file
         pub led_fault_path: String,
+    }
+
+    /// Returns a string with the slot label
+    ///
+    /// # Argumets
+    ///
+    /// * `disk` - a string with the device path
+    ///
+    /// # Example
+    /// ```
+    /// let temperature = get_disk_temperature("/dev/sg100");
+    /// ```
+    ///
+    fn get_slot_label(disk: String) -> String {
+        let res = fs::read(disk + "/slot");
+        let content = match res {
+            Ok(c) => c.to_vec(),
+            Err(_err) => "N/A".as_bytes().to_vec(),
+        };
+
+        unsafe { String::from_utf8_unchecked(content.to_vec()).to_string() }
     }
 
     /// Returns a string with the temperature
@@ -393,10 +416,12 @@ pub mod DiskShelf {
         String,
         String,
         String,
+        String,
     ) {
         let sys_class_enclosure: &str = "/sys/class/enclosure/";
         let mut enclosure = String::new();
         let mut slot = String::new();
+        let mut slot_label = String::new();
         let mut device_path = String::new();
         let mut temperature = String::new();
         let mut fw_revision = String::new();
@@ -417,7 +442,8 @@ pub mod DiskShelf {
             || cmp_slot.contains("array device")
             || cmp_slot.bytes().all(|c| c.is_ascii_digit())
         {
-            let generic_device = format!("{sys_class_enclosure}{enclosure_slot}/{_slot}/device");
+            let sys_enclosure_slot = format!("{sys_class_enclosure}{enclosure_slot}/{_slot}");
+            let generic_device = format!("{sys_enclosure_slot}/device");
             let physical_device = format!("{generic_device}/scsi_generic/");
 
             if Util::path_exists(&physical_device) {
@@ -429,6 +455,7 @@ pub mod DiskShelf {
                     let __get_slot: Vec<&str> = split_dev[5].split(',').collect();
                     enclosure = split_dev[4].to_string();
                     slot = __get_slot[0].to_string();
+                    slot_label = get_slot_label(sys_enclosure_slot.clone().to_string());
                     device_path = format!("/dev/{}", split_dev[8]);
                     temperature = get_disk_temperature(device_path.clone());
                     fw_revision = get_disk_firmware(device_path.clone());
@@ -443,6 +470,7 @@ pub mod DiskShelf {
         (
             enclosure,
             slot,
+            slot_label,
             device_path,
             temperature,
             fw_revision,
@@ -478,6 +506,7 @@ pub mod DiskShelf {
                 let (
                     _enclosure,
                     _slot,
+                    _slot_label,
                     _device_path,
                     _temperature,
                     _fw_revision,
@@ -492,6 +521,7 @@ pub mod DiskShelf {
                     disk.push(Disk {
                         enclosure: _enclosure,
                         slot: _slot,
+                        slot_label: _slot_label,
                         device_map: sg_map.get(&_device_path).unwrap().to_string(),
                         device_path: _device_path,
                         temperature: _temperature,

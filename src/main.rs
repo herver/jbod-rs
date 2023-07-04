@@ -103,7 +103,7 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
     if enclosure_option && disks_option || disks_option {
         let enclosure = BackPlane::get_enclosure();
         let mut disks = DiskShelf::jbod_disk_map();
-        disks.sort_by_key(|d| d.slot.clone());
+        disks.sort_by_key(|d| d.device_path.clone());
 
 
         for enc in enclosure {
@@ -122,7 +122,7 @@ fn enclosure_overview(option: &ArgMatches) -> Result<(), ()> {
                     } else {
                         row.push(Cell::new(&disk.device_map).style_spec("Fg"));
                     }
-                    row.push(Cell::new(&disk.slot.as_str()).style_spec("Fg"));
+                    row.push(Cell::new(&disk.slot_label.as_str()).style_spec("Fg"));
                     row.push(Cell::new(&disk.vendor).style_spec("Fb"));
                     row.push(Cell::new(&disk.model).style_spec("Fb"));
                     row.push(Cell::new(&disk.serial).style_spec("Fg"));
